@@ -143,7 +143,7 @@ impl MessageCenter {
 
     /// 发送字节
     pub fn send_bytes(&mut self, msg: &[u8]) -> Result<(), &'static str> {
-        const SLICE_SIZE: usize = 5;
+        const SLICE_SIZE: usize = 1024;
         // 协议头填充
         let whole_len = msg.len();
         let mut header = &mut self.recv_hd;
@@ -151,7 +151,7 @@ impl MessageCenter {
         header.whole_length = whole_len;
         let mut already_send_size: usize = 0;
         if msg.len() > SLICE_SIZE {
-            header.flag = 1;
+            header.set_sliced()
         }
         // 发送
         if let Some(tcpstream) = &mut self.tcpstream {
@@ -191,6 +191,7 @@ impl MessageCenter {
     /// 接收字节
     pub fn receive_bytes(&mut self) -> Result<&mut Vec<u8>, Box<dyn std::error::Error>> {
         let checked_data = &mut self.recv_buf;
+        checked_data.clear();
         if let Some(tcpstream) = &mut self.tcpstream {
             // 是否有后续分片
             let mut left_data = true;
@@ -260,5 +261,26 @@ mod tests {
         t1.join().unwrap();
     }
 
-   
+    #[test]
+    fn test_twice() {
+        const ADDR: &str = "127.0.0.1:31000";
+        let t1 = thread::spawn(|| {
+            let listen = TcpListener::bind(ADDR).unwrap();
+            let (stream, _) = listen.accept().unwrap();
+            let mut client = MessageCenter::new(stream);
+            let s = String::from("hello world").repeat(1024);
+            client.send_bytes(s.as_bytes()).unwrap();
+            client.send_bytes(b"another").unwrap();
+        });  
+
+        let mut server = MessageCenter::connect(ADDR).unwrap();
+        let data = server.receive_bytes().unwrap();
+        let data = String::from_utf8(data.to_vec()).unwrap();
+        println!("client recv: {}", data);
+        let data = server.receive_bytes().unwrap();
+        let data = String::from_utf8(data.to_vec()).unwrap();
+        println!("client recv: {}", data);
+
+        t1.join().unwrap();
+    }
 }
