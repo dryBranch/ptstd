@@ -188,6 +188,46 @@ impl MessageCenter {
         self.send_bytes(msg.as_bytes())
     }
     
+    pub fn receive_bytes_buf<'a>(&mut self, buf: &'a mut Vec<u8>) -> Result<&'a mut Vec<u8>, Box<dyn std::error::Error>> {
+        let checked_data = buf;
+        checked_data.clear();
+        if let Some(tcpstream) = &mut self.tcpstream {
+            // 是否有后续分片
+            let mut left_data = true;
+            while left_data {
+                // 读取该片协议头
+                tcpstream.read_exact(self.recv_hd.as_bytes_mut()).unwrap();
+                let header = &self.recv_hd;
+                // 读取数据
+                let mut buff = vec![0; header.length];
+                tcpstream.read_exact(&mut buff).map_err(|e| e.kind().to_string())?;
+                // 校验数据
+                let mut h = MessageHeader::default();
+                h.set_response();
+                h.begin = header.begin;
+                h.length = header.length;
+                if Self::default_checksum(&buff) == header.check {
+                    // 合并数据
+                    checked_data.append(&mut buff);
+                    // 发送确认包
+                    h.set_correct();
+                    tcpstream.write_all(h.as_bytes()).map_err(|_| "send response error")?;
+                } else {
+                    // 发送重传包
+                    tcpstream.write_all(h.as_bytes()).map_err(|_| "send response error")?;
+                    continue;
+                }
+                // 计数后移
+                left_data = if header.begin + header.length == header.whole_length {
+                    false
+                } else {
+                    true
+                }
+            }
+        }
+        Ok(checked_data)
+    }
+
     /// 接收字节
     pub fn receive_bytes(&mut self) -> Result<&mut Vec<u8>, Box<dyn std::error::Error>> {
         let checked_data = &mut self.recv_buf;
@@ -229,6 +269,22 @@ impl MessageCenter {
         Ok(checked_data)
     }
 
+}
+
+/// 将一个Sized的引用转为字节引用
+pub fn sized_as_bytes<T>(t: &T) -> &[u8] {
+    unsafe {
+        let p: *const u8 = std::mem::transmute(t);
+        std::slice::from_raw_parts(p, std::mem::size_of::<T>())
+    }
+}
+
+/// 将一个Sized的可变引用转为字节可变引用
+pub fn sized_as_bytes_mut<T>(t: &mut T) -> &mut [u8] {
+    unsafe {
+        let p: *mut u8 = std::mem::transmute(t);
+        std::slice::from_raw_parts_mut(p, std::mem::size_of::<T>())
+    }
 }
 
 #[cfg(test)]
@@ -273,12 +329,13 @@ mod tests {
             client.send_bytes(b"another").unwrap();
         });  
 
+        let mut buf = Vec::new();
         let mut server = MessageCenter::connect(ADDR).unwrap();
-        let data = server.receive_bytes().unwrap();
-        let data = String::from_utf8(data.to_vec()).unwrap();
+        server.receive_bytes_buf(&mut buf).unwrap();
+        let data = String::from_utf8(buf.to_vec()).unwrap();
         println!("client recv: {}", data);
-        let data = server.receive_bytes().unwrap();
-        let data = String::from_utf8(data.to_vec()).unwrap();
+        server.receive_bytes_buf(&mut buf).unwrap();
+        let data = String::from_utf8(buf.to_vec()).unwrap();
         println!("client recv: {}", data);
 
         t1.join().unwrap();
