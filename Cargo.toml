@@ -6,3 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# 加密
+rust-crypto = "0.2.36"
+rsa = "0.7.1"
+
+# 随机数
+rand = "0.8.5"
+
+# 错误处理
+thiserror = "1.0.37"
+anyhow = "1.0.66"
+
+[dev-dependencies]
+rand = "0.8.5"

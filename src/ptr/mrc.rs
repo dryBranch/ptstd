@@ -1,7 +1,7 @@
 use std::{rc::Rc, ops::{Deref, DerefMut}, fmt::{Display, Debug}};
 
 /// 多重所有权可变引用
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Mrc<T: ?Sized>(Rc<T>);
 
 impl<T> Deref for Mrc<T> {
@@ -102,5 +102,16 @@ mod tests {
             b.id += 2;
         }
         println!("end");
+    }
+
+    #[test]
+    fn test_ord() {
+        let a = Mrc::new(1);
+        let b = a.clone();
+        let mut c = Mrc::new(1);
+        println!("{}", a == b);
+        println!("{}", a == c);
+        *c += 1;
+        println!("{}", b < c);
     }
 }

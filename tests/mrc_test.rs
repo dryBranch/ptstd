@@ -146,7 +146,7 @@ fn test_drop() {
         };
         l.push_front(p);
     }
-    for _ in 1..=10 {
+    for _ in 1..=5 {
         let e = l.pop_front();
         println!("{}, left = {}", e.unwrap().name, l.length);
     }
