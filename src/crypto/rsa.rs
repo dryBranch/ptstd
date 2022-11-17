@@ -1,12 +1,16 @@
 /// RSA算法
-/// 
+///
 /// 生成一对公钥和私钥
 /// 将公钥发送给对方
 /// 对方用受到的公钥加密后发送
 /// 用私钥解密内容
-/// 
-/// 
-use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme, errors::Error as CryptError, pkcs8::{EncodePublicKey, LineEnding, DecodePublicKey, spki::Error as ParseError}};
+///
+///
+use rsa::{
+    errors::Error as CryptError,
+    pkcs8::{spki::Error as ParseError, DecodePublicKey, EncodePublicKey, LineEnding},
+    PaddingScheme, PublicKey, RsaPrivateKey, RsaPublicKey,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,17 +20,14 @@ pub enum RSAError {
     CryptError(#[from] CryptError),
     // 密钥转换错误
     #[error(transparent)]
-    ParseError(#[from] ParseError)
+    ParseError(#[from] ParseError),
 }
-
-
-
 
 /// 使用随机数生成密钥对
 /// 使用PKCS#1 v1.5填充
 pub struct RSAKeyPair {
-    pri_key : Option<RsaPrivateKey>,
-    pub_key : RsaPublicKey,
+    pri_key: Option<RsaPrivateKey>,
+    pub_key: RsaPublicKey,
 }
 
 impl RSAKeyPair {
@@ -37,7 +38,7 @@ impl RSAKeyPair {
         let pub_key = RsaPublicKey::from(&pri_key);
         Ok(RSAKeyPair {
             pri_key: Some(pri_key),
-            pub_key
+            pub_key,
         })
     }
 
@@ -45,22 +46,15 @@ impl RSAKeyPair {
     /// 数据不能超过256-11=245B(对于2048bit)
     pub fn encrypt(&self, input: &[u8]) -> Result<Vec<u8>, RSAError> {
         let mut rng = rand::thread_rng();
-        Ok(self.pub_key
-            .encrypt(
-                &mut rng, 
-                PaddingScheme::new_pkcs1v15_encrypt(), 
-                input
-            )?
-        )
+        Ok(self
+            .pub_key
+            .encrypt(&mut rng, PaddingScheme::new_pkcs1v15_encrypt(), input)?)
     }
 
     /// 使用私钥解密
     pub fn decrypt(&self, input: &[u8]) -> Result<Vec<u8>, RSAError> {
         if let Some(ref pri_key) = self.pri_key {
-            Ok(pri_key.decrypt(
-                PaddingScheme::new_pkcs1v15_encrypt(), 
-                input
-            )?)
+            Ok(pri_key.decrypt(PaddingScheme::new_pkcs1v15_encrypt(), input)?)
         } else {
             // 暂时不知道该返回什么错误
             // 没有私钥也算一个验证错误吧
@@ -78,7 +72,10 @@ impl TryFrom<&str> for RSAKeyPair {
 
     fn try_from(key: &str) -> Result<Self, Self::Error> {
         let pub_key = RsaPublicKey::from_public_key_pem(key)?;
-        Ok(Self { pri_key: None, pub_key })
+        Ok(Self {
+            pri_key: None,
+            pub_key,
+        })
     }
 }
 
@@ -87,7 +84,10 @@ impl TryFrom<&String> for RSAKeyPair {
 
     fn try_from(key: &String) -> Result<Self, Self::Error> {
         let pub_key = RsaPublicKey::from_public_key_pem(&key)?;
-        Ok(Self { pri_key: None, pub_key })
+        Ok(Self {
+            pri_key: None,
+            pub_key,
+        })
     }
 }
 
@@ -96,14 +96,17 @@ impl TryFrom<String> for RSAKeyPair {
 
     fn try_from(key: String) -> Result<Self, Self::Error> {
         let pub_key = RsaPublicKey::from_public_key_pem(&key)?;
-        Ok(Self { pri_key: None, pub_key })
+        Ok(Self {
+            pri_key: None,
+            pub_key,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test1() {
         let keys = RSAKeyPair::new().unwrap();
@@ -112,7 +115,7 @@ mod tests {
         println!("pub_key: {}", pk);
 
         // Encrypt
-        // 256B(2048b)的RSA只能加密 256-11=245B的数据 
+        // 256B(2048b)的RSA只能加密 256-11=245B的数据
         let data = b"a".repeat(245);
         println!("data len = {}", data.len());
         let pk = RSAKeyPair::try_from(&pk).unwrap();
@@ -120,7 +123,6 @@ mod tests {
         println!("len = {}", enc_data.len());
         println!("{:?}", enc_data);
 
-        
         // Decrypt
         let dec_data = keys.decrypt(&enc_data).unwrap();
         println!("{}", String::from_utf8(dec_data).unwrap());

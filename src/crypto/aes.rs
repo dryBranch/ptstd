@@ -6,18 +6,19 @@ pub trait AESCipher {
 }
 
 use crypto::{
-    blockmodes::{PkcsPadding, CbcEncryptor, CbcDecryptor, EncPadding, DecPadding},
+    aessafe::{AesSafe256Decryptor, AesSafe256Encryptor},
+    blockmodes::{CbcDecryptor, CbcEncryptor, DecPadding, EncPadding, PkcsPadding},
     buffer::{ReadBuffer, RefReadBuffer, RefWriteBuffer, WriteBuffer},
-    symmetriccipher::{Decryptor, Encryptor}, aessafe::{AesSafe256Encryptor, AesSafe256Decryptor},
+    symmetriccipher::{Decryptor, Encryptor},
 };
 use rand::RngCore;
 
 /// 使用CBC模式、PkcsPadding、256位密钥
 pub struct AESCryptor {
-    key         : Vec<u8>,
-    iv          : Vec<u8>,
-    encryptor   : CbcEncryptor<AesSafe256Encryptor, EncPadding<PkcsPadding>>,
-    decryptor   : CbcDecryptor<AesSafe256Decryptor, DecPadding<PkcsPadding>>,
+    key: Vec<u8>,
+    iv: Vec<u8>,
+    encryptor: CbcEncryptor<AesSafe256Encryptor, EncPadding<PkcsPadding>>,
+    decryptor: CbcDecryptor<AesSafe256Decryptor, DecPadding<PkcsPadding>>,
 }
 
 impl TryFrom<&[u8]> for AESCryptor {
@@ -28,6 +29,14 @@ impl TryFrom<&[u8]> for AESCryptor {
             return Err("the len of key_iv is not 48".to_string());
         }
         Self::try_new_with(&key_iv[0..32], &key_iv[32..48])
+    }
+}
+
+impl TryFrom<&Vec<u8>> for AESCryptor {
+    type Error = String;
+
+    fn try_from(value: &Vec<u8>) -> Result<Self, Self::Error> {
+        AESCryptor::try_from(value.as_slice())
     }
 }
 
@@ -60,9 +69,8 @@ impl AESCryptor {
         let enc = CbcEncryptor::new(aes_enc, PkcsPadding, iv.to_vec());
         let dec = CbcDecryptor::new(aes_dec, PkcsPadding, iv.to_vec());
         Ok(AESCryptor {
-            key         : key.into(),
-            iv          : iv.into(),
-            // encryptor: aes::cbc_encryptor(KeySize::KeySize256, key, iv, PkcsPadding),
+            key: key.into(),
+            iv: iv.into(),
             encryptor: enc,
             decryptor: dec,
         })
@@ -79,6 +87,7 @@ impl AESCipher for AESCryptor {
     /// 15B的数据加密后被填充了到16B
     /// 0B的数据还是0B
     fn encode(&mut self, input: &[u8]) -> Result<Vec<u8>, String> {
+        self.encryptor.reset(&self.iv);
         let mut read_buf = RefReadBuffer::new(input);
         let mut buff = [0u8; 4096];
         let mut write_buf = RefWriteBuffer::new(&mut buff);
@@ -105,6 +114,7 @@ impl AESCipher for AESCryptor {
     }
 
     fn decode(&mut self, input: &[u8]) -> Result<Vec<u8>, String> {
+        self.decryptor.reset(&self.iv);
         let mut read_buf = RefReadBuffer::new(input);
         let mut buff = [0u8; 4096];
         let mut write_buf = RefWriteBuffer::new(&mut buff);
@@ -158,5 +168,23 @@ mod tests {
 
         println!("{:?}", cipher.to_key_iv_bytes());
         Ok(())
+    }
+
+    #[test]
+    fn test2() {
+        let text1 = "123";
+        let text2 = "abc";
+        let mut cipher = AESCryptor::try_new().unwrap();
+        let mut c2 = AESCryptor::try_from(&cipher.to_key_iv_bytes()).unwrap();
+        let enc1 = cipher.encode(text1.as_bytes()).unwrap();
+        let enc2 = cipher.encode(text2.as_bytes()).unwrap();
+        println!("len1 = {}, len2 = {}", enc1.len(), enc2.len());
+
+        let dec2 = c2.decode(&enc2).unwrap();
+        let dec1 = c2.decode(&enc1).unwrap();
+        let dec2_text = String::from_utf8(dec2).unwrap();
+        let dec1_text = String::from_utf8(dec1).unwrap();
+        println!("len = {}, c = {}", dec1_text.len(), dec1_text);
+        println!("len = {}, c = {}", dec2_text.len(), dec2_text);
     }
 }
