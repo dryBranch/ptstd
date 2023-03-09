@@ -17,5 +17,8 @@ rand = "0.8.5"
 thiserror = "1.0.37"
 anyhow = "1.0.66"
 
+# 线性代数
+ndarray = "0.15.6"
+
 [dev-dependencies]
 rand = "0.8.5"
