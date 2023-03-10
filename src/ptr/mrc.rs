@@ -147,7 +147,9 @@ impl<T> Mrc<T> {
             .map_err(|p| Mrc(p))
     }
 
-    /// 得到可变引用
+    /// # Safety
+    /// 本身是通过指针的方式得到可变引用，应该不会 UB
+    #[allow(clippy::mut_from_ref)]
     #[inline]
     pub unsafe fn to_mut(&self) -> &mut T {
         &mut *self.0.0

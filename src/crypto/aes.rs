@@ -58,10 +58,10 @@ impl AESCryptor {
 
     pub fn try_new_with(key: &[u8], iv: &[u8]) -> Result<Self, String> {
         if key.len() != 32 {
-            return Err(format!("key is not 256 bits"));
+            return Err("key is not 256 bits".to_string());
         }
         if iv.len() != 16 {
-            return Err(format!("iv is not 128 bits"));
+            return Err("iv is not 128 bits".to_string());
         }
         let aes_enc = crypto::aessafe::AesSafe256Encryptor::new(key);
         let aes_dec = crypto::aessafe::AesSafe256Decryptor::new(key);
@@ -103,7 +103,7 @@ impl AESCipher for AESCryptor {
                     .take_read_buffer()
                     .take_remaining()
                     .iter()
-                    .map(|&i| i),
+                    .copied(),
             );
             match result {
                 crypto::buffer::BufferResult::BufferUnderflow => break,
@@ -130,7 +130,7 @@ impl AESCipher for AESCryptor {
                     .take_read_buffer()
                     .take_remaining()
                     .iter()
-                    .map(|&i| i),
+                    .copied(),
             );
             match result {
                 crypto::buffer::BufferResult::BufferUnderflow => break,

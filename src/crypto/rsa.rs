@@ -83,7 +83,7 @@ impl TryFrom<&String> for RSAKeyPair {
     type Error = RSAError;
 
     fn try_from(key: &String) -> Result<Self, Self::Error> {
-        let pub_key = RsaPublicKey::from_public_key_pem(&key)?;
+        let pub_key = RsaPublicKey::from_public_key_pem(key)?;
         Ok(Self {
             pri_key: None,
             pub_key,
