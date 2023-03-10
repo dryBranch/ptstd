@@ -1,25 +1,23 @@
 use std::{rc::{Rc, Weak}, ops::{Deref, DerefMut}, fmt::{Display, Debug}, hash::Hash};
 
 /// 对内部对象的包装
-struct Pointer<T: ?Sized>(*mut T);
+struct Pointer<T: ?Sized>(*mut T, bool);
 
 impl<T: ?Sized> Deref for Pointer<T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         unsafe { &*self.0 }
     }
 }
 
-// impl<T: ?Sized> DerefMut for Pointer<T> {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         unsafe { &mut *self.0 }
-//     }
-// }
-
 impl<T: ?Sized> Drop for Pointer<T> {
+    #[inline]
     fn drop(&mut self) {
-        unsafe { Box::from_raw(self.0) };
+        if self.1 {
+            unsafe { Box::from_raw(self.0) };
+        }
     }
 }
 
@@ -36,6 +34,7 @@ impl<T: ?Sized + Debug> Debug for Pointer<T> {
 }
 
 impl<T: ?Sized + PartialEq> PartialEq for Pointer<T> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.deref().eq(other)
     }
@@ -44,18 +43,21 @@ impl<T: ?Sized + PartialEq> PartialEq for Pointer<T> {
 impl<T: ?Sized + Eq> Eq for Pointer<T> { }
 
 impl<T: ?Sized + PartialOrd> PartialOrd for Pointer<T> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.deref().partial_cmp(other)
     }
 }
 
 impl<T: ?Sized + Ord> Ord for Pointer<T> {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.deref().cmp(other)
     }
 }
 
 impl<T: ?Sized + Hash> Hash for Pointer<T> {
+    #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
@@ -68,6 +70,7 @@ pub struct Mrc<T: ?Sized>(Rc<Pointer<T>>);
 impl<T> Deref for Mrc<T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
@@ -75,12 +78,14 @@ impl<T> Deref for Mrc<T> {
 
 /// 使其可变
 impl<T> DerefMut for Mrc<T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.0.0 }
     }
 }
 
 impl<T> Clone for Mrc<T> {
+    #[inline]
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
@@ -98,30 +103,52 @@ impl<T: ?Sized + Debug> Debug for Mrc<T> {
     }
 }
 
+// 既然要追求刺激，那就贯彻到底咯
+unsafe impl<T> Sync for Mrc<T> { }
+unsafe impl<T> Send for Mrc<T> { }
 
 impl<T> Mrc<T> {
     pub fn new(value: T) -> Self {
         Self(Rc::new(
-            Pointer(Box::into_raw(Box::new(
-                value
-            )))
+            Pointer(
+                Box::into_raw(Box::new(value)), 
+                true,
+            )
         ))
     }
 
     /// 降级获得相应的弱引用
+    #[inline]
     pub fn downgrade(this: &Self) -> Mweak<T> {
         Mweak(Rc::downgrade(&this.0))
+    }
+
+    /// 得到强引用数量
+    #[inline]
+    pub fn strong_count(this: &Self) -> usize {
+        Rc::strong_count(&this.0)
+    }
+
+    /// 得到若引用数量
+    #[inline]
+    pub fn weak_count(this: &Self) -> usize {
+        Rc::weak_count(&this.0)
     }
 
     /// 当期只有一个强引用时解包
     /// 失败则原路返回
     pub fn try_unwrap(self) -> Result<T, Mrc<T>> {
         Rc::try_unwrap(self.0)
-            .map(|p| unsafe { *Box::from_raw(p.0) } )
+            .map(|mut p| unsafe { 
+                // 阻止回收堆上内存
+                p.1 = false;
+                *Box::from_raw(p.0)
+            } )
             .map_err(|p| Mrc(p))
     }
 
     /// 得到可变引用
+    #[inline]
     pub unsafe fn to_mut(&self) -> &mut T {
         &mut *self.0.0
     }
@@ -149,37 +176,30 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test1() {
+    fn test_mut() {
         let mut a = Mrc::new(1);
         let mut b = a.clone();
-        println!("{} {}", a, b);
         *b += 1;
+        assert!(*a == 2);
         *a += 2;
-        println!("{} {}", a, b);
-        println!("{:?} {:?}", a, b);
-        let a = Rc::new(1);
-        println!("{a}, {a:?}");
-
-        let s = Rc::new("rc");
-        println!("{}, {:?}", s, s);
-        let s = Mrc::new("mrc");
-        println!("{}, {:?}", s, s);
+        assert!(*b == 4);
+        assert!(*a == *b);
     }
 
     #[test]
-    fn test2() {
+    fn test_strong_count() {
         let a = Mrc::new("hello".to_string());
+        assert!(Mrc::strong_count(&a) == 1);
         let b = a.clone();
-        // assert!(a.try_unwrap().is_err());
-        // assert!(b.try_unwrap().is_ok());
-        println!("{}", Rc::strong_count(&a.0));
-        println!("{}", Rc::strong_count(&b.0));
-        println!("{:?}, {}", a.try_unwrap(), Rc::strong_count(&b.0));
+        assert!(Mrc::strong_count(&a) == 2);
+        assert!(Mrc::strong_count(&b) == 2);
         
-        println!("{}", Rc::strong_count(&b.0));
-        println!("{:?}", b.try_unwrap());
+        assert!(a.try_unwrap().is_err());
+        assert!(Mrc::strong_count(&b) == 1);
+        assert!(b.try_unwrap().is_ok());
     }
 
+    #[derive(Debug)]
     struct Person {
         name    : String,
         id      : u32,
@@ -201,6 +221,8 @@ mod tests {
             let a = Mrc::new(p1);
             let mut b = a.clone();
             b.id += 2;
+            assert!(a.try_unwrap().is_err());
+            assert!(b.try_unwrap().is_ok());
         }
         println!("end");
     }
@@ -210,29 +232,10 @@ mod tests {
         let a = Mrc::new(1);
         let b = a.clone();
         let mut c = Mrc::new(1);
-        println!("{}", a == b);
-        println!("{}", a == c);
+        assert!(a == b);
+        assert!(a == c);
         *c += 1;
-        println!("{}", b < c);
-
-        let a = Rc::new(1);
-        let c = Rc::new(1);
-        println!("{}", a == c);
-    }
-
-    #[test]
-    fn test_box() {
-        let a = Box::into_raw(Box::new(
-            Person {
-                name    : "tom".to_string(),
-                id      : 1,
-            }
-        ));
-        unsafe {
-            let mut b = Box::from_raw(a);
-            let mut c = *b;
-            c.id = 10;
-        }
-        println!("end");
+        assert!(b < c);
+        assert!(c > a);
     }
 }
