@@ -1,7 +1,7 @@
 use std::{rc::{Rc, Weak}, ops::{Deref, DerefMut}, fmt::{Display, Debug}, hash::Hash};
 
-/// 对内部对象的包装
-struct Pointer<T: ?Sized>(*mut T, bool);
+/// 对内部对象 `T` 的包装
+struct Pointer<T: ?Sized>(*mut T);
 
 impl<T: ?Sized> Deref for Pointer<T> {
     type Target = T;
@@ -15,9 +15,7 @@ impl<T: ?Sized> Deref for Pointer<T> {
 impl<T: ?Sized> Drop for Pointer<T> {
     #[inline]
     fn drop(&mut self) {
-        if self.1 {
-            unsafe { Box::from_raw(self.0) };
-        }
+        unsafe { Box::from_raw(self.0) };
     }
 }
 
@@ -63,7 +61,17 @@ impl<T: ?Sized + Hash> Hash for Pointer<T> {
     }
 }
 
-/// 多重所有权可变引用
+/// ## 多重所有权可变引用
+/// 
+/// 写的是 CPP 里的 `Shared_Ptr`。
+/// 
+/// 主要结构就是将目标对象 `T` 在堆内存中分配并泄漏出一个指针 `*mut T`，
+/// 交由一个包装类型 `Pointer<T>` 管理，然后套一个性能足够好的引用计数 `Rc<T>`。
+/// 
+/// 这里的 `Pointer<T>` 实现了 `Drop` 来释放目标对象 `T`，可变引用的转换是从指针得到的。
+/// 我想如此 Rust 编译器总不会对我的指针做什么手脚吧，不过如果想办法储存由此而来的引用，可能还是会出问题。
+/// 
+/// 至于为什么没有使用标准库中的 `ManuallyDrop` 和 `UnsafeCell` 之类的，主要是没怎么使用过，不怎么熟悉其特性，不敢草率。
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Mrc<T: ?Sized>(Rc<Pointer<T>>);
 
@@ -112,7 +120,6 @@ impl<T> Mrc<T> {
         Self(Rc::new(
             Pointer(
                 Box::into_raw(Box::new(value)), 
-                true,
             )
         ))
     }
@@ -129,20 +136,21 @@ impl<T> Mrc<T> {
         Rc::strong_count(&this.0)
     }
 
-    /// 得到若引用数量
+    /// 得到弱引用数量
     #[inline]
     pub fn weak_count(this: &Self) -> usize {
         Rc::weak_count(&this.0)
     }
 
-    /// 当期只有一个强引用时解包
-    /// 失败则原路返回
+    /// 当期只有一个强引用时解包，失败则原路返回
     pub fn try_unwrap(self) -> Result<T, Mrc<T>> {
         Rc::try_unwrap(self.0)
-            .map(|mut p| unsafe { 
-                // 阻止回收堆上内存
-                p.1 = false;
-                *Box::from_raw(p.0)
+            .map(|p| unsafe { 
+                let t = *Box::from_raw(p.0);
+                // 避免 Pointer<T> 递归调用 Drop 导致 T 以及其内部被回收
+                // Ponter<T> 会被 forget 回收，而 T 不会
+                std::mem::forget(p);
+                t
             } )
             .map_err(|p| Mrc(p))
     }
@@ -157,13 +165,14 @@ impl<T> Mrc<T> {
 }
 
 impl<T: Clone> Mrc<T> {
+    /// 如果只有一个引用则返回指向的对象，反之复制一个，类似 `Cow`
     pub fn unwrap_or_clone(self) -> T {
         Mrc::try_unwrap(self)
             .unwrap_or_else(|rc| (*rc).clone() )
     }
 }
 
-/// 对应的弱引用
+/// `Mrc<T>` 对应的弱引用
 pub struct Mweak<T: ?Sized>(Weak<Pointer<T>>);
 
 impl<T> Mweak<T> {
@@ -196,9 +205,9 @@ mod tests {
         assert!(Mrc::strong_count(&a) == 2);
         assert!(Mrc::strong_count(&b) == 2);
         
-        assert!(a.try_unwrap().is_err());
+        assert!(a.try_unwrap().is_err(), "try_unwrap a error");
         assert!(Mrc::strong_count(&b) == 1);
-        assert!(b.try_unwrap().is_ok());
+        assert!(b.try_unwrap().is_ok(), "try_unwrap b error");
     }
 
     #[derive(Debug)]
