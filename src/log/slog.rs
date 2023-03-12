@@ -70,6 +70,7 @@ impl Log for SLog {
         metadata.level() <= Level::Debug
     }
 
+    #[allow(clippy::unused_io_amount)]
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
             let now = Local::now();
@@ -82,11 +83,11 @@ impl Log for SLog {
             );
 
             match &self.destination {
-                LogDestination::Console => print!("{}", msg),
+                LogDestination::Console => print!("{msg}"),
                 LogDestination::File(f) => {
                     let mut f = f.lock().unwrap();
                     f.write(msg.as_bytes()).unwrap();
-                }
+                },
                 LogDestination::Network => (),
             };
         }

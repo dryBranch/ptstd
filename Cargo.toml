@@ -1,6 +1,6 @@
 [package]
 name = "ptstd"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A collection of wrapped crates and utils"
 license = "MIT"
@@ -46,3 +46,10 @@ chrono = { version = "0.4.19" }
 
 [dev-dependencies]
 rand = "0.8.5"
+
+# docs.rs-specific configuration
+[package.metadata.docs.rs]
+# document all features
+all-features = true
+# defines the configuration attribute `docsrs`
+rustdoc-args = ["--cfg", "docsrs"]
