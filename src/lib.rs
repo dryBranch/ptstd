@@ -15,7 +15,12 @@ pub mod thread;
 /// 加密库相关
 #[cfg(feature = "crypto")]
 pub mod crypto;
+
 /// 线性代数相关
 #[cfg(feature = "linear")]
 pub mod linear;
+
+/// 日志库
+#[cfg(feature = "log")]
+pub mod log;
 // =============3rd==================

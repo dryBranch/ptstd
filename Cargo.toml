@@ -17,9 +17,11 @@ ptr = []
 thread = []
 
 # 3rd
-extra = ["crypto", "linear"]
+extra = ["crypto", "linear", "log", "chrono"]
 crypto = []
 linear = []
+log = []
+chrono = []
 
 [dependencies]
 # 加密
@@ -35,6 +37,12 @@ anyhow = "1.0.66"
 
 # 线性代数
 ndarray = "0.15.6"
+
+# 日志门面库
+log = {version = "0.4.17", features = ["std"] }
+
+# 时间
+chrono = { version = "0.4.19" }
 
 [dev-dependencies]
 rand = "0.8.5"
